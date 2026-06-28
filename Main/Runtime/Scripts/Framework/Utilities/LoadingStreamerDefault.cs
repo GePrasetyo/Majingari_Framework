@@ -2,16 +2,23 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Majinfwork.World {
     /// <summary>
     /// Default loading screen using UI Toolkit.
     /// Creates all UI elements at runtime - no prefabs, UXML, or USS required.
-    /// Developer doesn't need to set up anything unless they want custom behavior.
+    /// Assign a runtime ThemeStyleSheet (e.g. UnityDefaultRuntimeTheme) so UI Toolkit
+    /// can style the loading panel; without one, Unity logs a warning on boot.
     /// </summary>
     [Serializable]
     public class LoadingStreamerDefault : LoadingStreamer {
         [SerializeField, Min(0.1f)] private float fadeSpeed = 1;
+
+        [Tooltip("Runtime theme used by the loading-screen PanelSettings. " +
+                 "Assign your project's default (e.g. Assets/UI Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss). " +
+                 "Leave null only if you know you don't need a theme.")]
+        [SerializeField] private ThemeStyleSheet loadingTheme;
 
         private RuntimeLoadingPanel panel;
         private bool constructed;
@@ -26,6 +33,7 @@ namespace Majinfwork.World {
         protected override void Construct() {
             var go = new GameObject("LoadingPanel");
             panel = go.AddComponent<RuntimeLoadingPanel>();
+            panel.Initialize(loadingTheme);
             UnityEngine.Object.DontDestroyOnLoad(go);
             constructed = true;
         }

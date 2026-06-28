@@ -17,19 +17,35 @@ namespace Majinfwork.World {
         [SerializeField] private AddressableSceneHandler[] levelStreamCollection = Array.Empty<AddressableSceneHandler>();
 
         [Header("Default Fallback")]
-        [Tooltip("GameMode used when a scene has no specific GameMode configured")]
-        [SerializeField] private GameModeManager defaultGameMode;
+        [Tooltip("GameMode used when a scene has no specific GameMode configured. Addressable, loaded on demand.")]
+        [SerializeField] private AssetReferenceT<GameModeManager> defaultGameMode;
 
         public Dictionary<string, WorldAssetConfig> MapConfigList = new Dictionary<string, WorldAssetConfig>();
         public Dictionary<string, AddressableSceneHandler> levelStreamDictionary = new Dictionary<string, AddressableSceneHandler>();
 
         [SerializeReference, ClassReference] private LoadingStreamer loadingHandler;
 
-        public GameModeManager DefaultGameMode => defaultGameMode;
+        [Tooltip("Optional additional loading streamers, addressable by key via " +
+                 "LoadingStreamerRegistry.Get(\"<key>\"). A caller asking for an unknown " +
+                 "key falls back to the default loadingHandler above.")]
+        [SerializeField] private KeyedLoadingStreamer[] keyedLoadingStreamers = System.Array.Empty<KeyedLoadingStreamer>();
+
+        public AssetReferenceT<GameModeManager> DefaultGameMode => defaultGameMode;
 
         public void SetupSceneConfiguration() {
             loadingHandler.Initialize();
             ServiceLocator.Register<LoadingStreamer>(loadingHandler);
+
+            var registry = new LoadingStreamerRegistry(loadingHandler);
+            if (keyedLoadingStreamers != null) {
+                for (int i = 0; i < keyedLoadingStreamers.Length; i++) {
+                    var entry = keyedLoadingStreamers[i];
+                    if (entry.streamer == null) continue;
+                    entry.streamer.Initialize();
+                    registry.Register(entry.key, entry.streamer);
+                }
+            }
+            ServiceLocator.Register<LoadingStreamerRegistry>(registry);
 
             MapConfigList.Clear();
 
@@ -51,12 +67,22 @@ namespace Majinfwork.World {
     }
 
     [Serializable]
+    public class KeyedLoadingStreamer {
+        [Tooltip("Lookup key — callers do LoadingStreamerRegistry.Get(key).")]
+        public string key;
+        [SerializeReference, ClassReference] public LoadingStreamer streamer;
+    }
+
+    [Serializable]
     public class WorldAssetConfig {
 #if UNITY_EDITOR
         public SceneAsset Map;
 #endif
         public string mapName;
-        public GameModeManager TheGameMode;
+        // Addressable — the GameModeManager and its dependency chain (HUD, pawn, input
+        // prefabs) only load when this scene is activated. Was a direct SO reference,
+        // which pulled every mini-game's assets into the boot-time Resources closure.
+        public AssetReferenceT<GameModeManager> TheGameMode;
     }
 
     [Serializable]

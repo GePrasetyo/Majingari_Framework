@@ -72,17 +72,18 @@ namespace Majinfwork.World {
         }
 
         private static void ContinueBoot(GameWorldSettings instance) {
-            // Initialize save system (async, consumers await when needed)
+            // Register core services first so anything that runs during spawn/construct can resolve them.
             if (instance.enableSaveSystem) {
                 var saveService = new SaveDataService(slotCount: instance.saveSlotCount);
                 ServiceLocator.Register<ISaveDataService>(saveService);
                 _ = InitializeSaveServiceAsync(saveService, instance.defaultSlotIndex);
             }
+            ServiceLocator.Register<GameInstance>(instance.classGameInstance);
 
+            // Then do work that may depend on them (PlayerState.OnCreated resolves GameInstance).
             PlayerManager.Initialize(instance.playerControllerPrefab, instance.playerStatePrefab);
             PlayerManager.SpawnPlayer();
 
-            ServiceLocator.Register<GameInstance>(instance.classGameInstance);
             instance.classGameInstance.Construct(instance.worldConfigObject);
 
             Application.quitting += instance.OnGameQuit;

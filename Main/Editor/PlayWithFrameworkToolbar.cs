@@ -2,7 +2,6 @@ using UnityEditor;
 using UnityEditor.Overlays;
 using UnityEditor.Toolbars;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace Majinfwork.World {
     internal static class FrameworkEditorIcons {
@@ -12,6 +11,9 @@ namespace Majinfwork.World {
         public static Texture2D PlayFramework => playFrameworkIcon ??= AssetDatabase.LoadAssetAtPath<Texture2D>(IconPath);
     }
 
+    /// <summary>
+    /// Scene View overlay button — uses the [EditorToolbarElement] + Overlay API.
+    /// </summary>
     [Overlay(typeof(SceneView), "Play Framework", true)]
     public class PlayFrameworkOverlay : ToolbarOverlay {
         public PlayFrameworkOverlay() : base(PlayWithFrameworkButton.Id) { }
@@ -26,10 +28,37 @@ namespace Majinfwork.World {
             tooltip = "Enter Play Mode with Framework enabled";
             if (FrameworkEditorIcons.PlayFramework != null)
                 icon = FrameworkEditorIcons.PlayFramework;
-            clicked += OnClick;
+            clicked += PlayWithFramework.Toggle;
         }
+    }
 
-        private void OnClick() {
+    /// <summary>
+    /// Main toolbar button — uses the Unity 6 supported [MainToolbarElement] API
+    /// (UnityEditor.Toolbars.MainToolbarElementAttribute / MainToolbarButton).
+    /// This replaces the previous reflection-based injection into the private
+    /// UnityEditor.Toolbar.m_Root field, which Unity 6.x actively rejects and which
+    /// caused "framework didn't boot" / "TitleScreen widget missing" bugs when the
+    /// injection silently failed.
+    /// </summary>
+    internal static class PlayFrameworkMainToolbar {
+        [MainToolbarElement("Majinfwork/PlayWithFramework", defaultDockPosition = MainToolbarDockPosition.Middle)]
+        public static MainToolbarElement Create() {
+            var content = new MainToolbarContent {
+                image = FrameworkEditorIcons.PlayFramework,
+                text = FrameworkEditorIcons.PlayFramework == null ? "Framework" : null,
+                tooltip = "Play with Framework enabled (Ctrl+Alt+P)"
+            };
+            return new MainToolbarButton(content, PlayWithFramework.Toggle);
+        }
+    }
+
+    /// <summary>
+    /// Core entry points for entering Play Mode with the framework flag set.
+    /// Exposed as a menu item, a Scene View overlay button, and a main toolbar button.
+    /// </summary>
+    public static class PlayWithFramework {
+        [MenuItem("Majingari Framework/Play With Framework %&p", priority = -100)]
+        public static void Toggle() {
             if (EditorApplication.isPlaying) {
                 EditorApplication.isPlaying = false;
             }
@@ -40,91 +69,20 @@ namespace Majinfwork.World {
         }
     }
 
+    /// <summary>
+    /// Clears the framework-play flag on exiting play mode so the next regular Play
+    /// doesn't accidentally boot the framework.
+    /// </summary>
     [InitializeOnLoad]
-    public static class PlayFrameworkToolbarIntegration {
-        static PlayFrameworkToolbarIntegration() {
+    internal static class PlayFrameworkFlagLifetime {
+        static PlayFrameworkFlagLifetime() {
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-            ToolbarExtender.PlayModeToolbarGUI += OnToolbarGUI;
         }
 
         private static void OnPlayModeStateChanged(PlayModeStateChange state) {
             if (state == PlayModeStateChange.ExitingPlayMode) {
                 SessionState.SetBool(GameWorldSession.PlayWithFrameworkKey, false);
             }
-        }
-
-        private static void OnToolbarGUI() {
-            bool isEnabled = SessionState.GetBool(GameWorldSession.PlayWithFrameworkKey, false);
-
-            GUI.backgroundColor = isEnabled ? new Color(0.4f, 0.8f, 0.4f) : Color.white;
-
-            var icon = FrameworkEditorIcons.PlayFramework;
-            var content = icon != null
-                ? new GUIContent(icon, "Play with Framework enabled")
-                : new GUIContent("Framework", "Play with Framework enabled");
-
-            if (GUILayout.Button(content, EditorStyles.toolbarButton))
-            {
-                if (EditorApplication.isPlaying) {
-                    EditorApplication.isPlaying = false;
-                }
-                else {
-                    SessionState.SetBool(GameWorldSession.PlayWithFrameworkKey, true);
-                    EditorApplication.isPlaying = true;
-                }
-            }
-
-            GUI.backgroundColor = Color.white;
-        }
-    }
-
-    [InitializeOnLoad]
-    public static class ToolbarExtender {
-        private static readonly System.Type ToolbarType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.Toolbar");
-        private static ScriptableObject currentToolbar;
-        private static bool initialized;
-
-        public static System.Action PlayModeToolbarGUI;
-
-        static ToolbarExtender() {
-            EditorApplication.update -= OnUpdate;
-            EditorApplication.update += OnUpdate;
-        }
-
-        private static void OnUpdate() {
-            if (initialized) return;
-
-            var toolbars = Resources.FindObjectsOfTypeAll(ToolbarType);
-            currentToolbar = toolbars.Length > 0 ? (ScriptableObject)toolbars[0] : null;
-
-            if (currentToolbar != null) {
-                var root = currentToolbar.GetType()
-                    .GetField("m_Root", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-                if (root != null) {
-                    var rawRoot = root.GetValue(currentToolbar);
-                    var mRoot = rawRoot as VisualElement;
-
-                    if (mRoot != null) {
-                        initialized = RegisterCallback(mRoot);
-                    }
-                }
-            }
-        }
-
-        private static bool RegisterCallback(VisualElement root) {
-            var playModeZone = root.Q("ToolbarZonePlayMode");
-            if (playModeZone != null) {
-                var container = new IMGUIContainer(() => PlayModeToolbarGUI?.Invoke());
-                container.style.width = 40;
-                container.style.minWidth = 40;
-                container.style.height = 22;
-                container.style.marginLeft = 8;
-                container.style.alignSelf = Align.Center;
-                playModeZone.Add(container);
-                return true;
-            }
-            return false;
         }
     }
 }

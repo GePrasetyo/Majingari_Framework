@@ -3,9 +3,10 @@ using UnityEngine.UIElements;
 
 namespace Majinfwork.World {
     /// <summary>
-    /// Runtime-created UI Toolkit panel for loading screen overlay.
-    /// Creates PanelSettings and UIDocument at runtime - no assets required.
-    /// Used internally by LoadingStreamerDefault.
+    /// Runtime-created UI Toolkit panel for the loading-screen overlay.
+    /// PanelSettings + UIDocument are built inside <see cref="Initialize"/>, not Awake,
+    /// so the theme can be injected from the caller without Unity warning about a
+    /// missing theme style sheet.
     /// </summary>
     internal class RuntimeLoadingPanel : MonoBehaviour {
         private UIDocument uiDocument;
@@ -13,8 +14,15 @@ namespace Majinfwork.World {
         private VisualElement overlay;
         private bool initialized;
 
-        private void Awake() {
-            // Create PanelSettings at runtime - no asset required
+        /// <summary>
+        /// Build PanelSettings, UIDocument, and the visual tree.
+        /// Pass the project's runtime theme (e.g. UnityDefaultRuntimeTheme) so UI Toolkit
+        /// can style the panel. Null theme is tolerated (loading overlay is just a black
+        /// rectangle so it still renders) but Unity will log a theme-missing warning.
+        /// </summary>
+        public void Initialize(ThemeStyleSheet theme) {
+            if (initialized) return;
+
             panelSettings = ScriptableObject.CreateInstance<PanelSettings>();
             panelSettings.name = "LoadingPanelSettings";
             panelSettings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
@@ -23,14 +31,13 @@ namespace Majinfwork.World {
             panelSettings.match = 0.5f;
             // High sort order to render on top
             panelSettings.sortingOrder = 10000;
+            if (theme != null) {
+                panelSettings.themeStyleSheet = theme;
+            }
 
-            // Create UIDocument
             uiDocument = gameObject.AddComponent<UIDocument>();
             uiDocument.panelSettings = panelSettings;
-        }
 
-        private void Start() {
-            // rootVisualElement is available after Start
             BuildVisualTree();
         }
 
@@ -49,6 +56,8 @@ namespace Majinfwork.World {
             root.style.top = 0;
             root.style.right = 0;
             root.style.bottom = 0;
+            // Root is a transparent container — overlay handles all picking
+            root.pickingMode = PickingMode.Ignore;
 
             overlay = new VisualElement {
                 name = "loading-overlay",
@@ -70,7 +79,7 @@ namespace Majinfwork.World {
         }
 
         public void Show() {
-            EnsureInitialized();
+            if (!initialized) return;
             if (overlay != null) {
                 overlay.style.display = DisplayStyle.Flex;
             }
@@ -83,24 +92,18 @@ namespace Majinfwork.World {
         }
 
         public void SetOpacity(float opacity) {
-            EnsureInitialized();
+            if (!initialized) return;
             if (overlay != null) {
                 overlay.style.opacity = opacity;
             }
         }
 
         public float GetOpacity() {
-            EnsureInitialized();
+            if (!initialized) return 0f;
             if (overlay != null) {
                 return overlay.resolvedStyle.opacity;
             }
             return 0f;
-        }
-
-        private void EnsureInitialized() {
-            if (!initialized) {
-                BuildVisualTree();
-            }
         }
     }
 }
